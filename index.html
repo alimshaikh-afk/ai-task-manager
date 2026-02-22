@@ -41,14 +41,23 @@
             const [showContextModal, setShowContextModal] = useState(false);
             const [apiKey, setApiKey] = useState('');
             const [tempApiKey, setTempApiKey] = useState('');
-            const [lastBriefing, setLastBriefing] = useState('');
             const messagesEndRef = useRef(null);
+
+            // Notification schedule: Sun-Thu at 10am, 2pm, 5:30pm
+            const notificationTimes = [
+                { hour: 10, minute: 0, label: 'Morning Check-in' },
+                { hour: 14, minute: 0, label: 'Afternoon Reminder' },
+                { hour: 17, minute: 30, label: 'Evening Wrap-up' }
+            ];
 
             useEffect(() => {
                 loadData();
                 checkNotificationPermission();
-                checkDailyBriefing();
-                const interval = setInterval(checkReminders, 60000);
+                setupScheduledNotifications();
+                const interval = setInterval(() => {
+                    checkReminders();
+                    checkScheduledNotifications();
+                }, 60000); // Check every minute
                 return () => clearInterval(interval);
             }, []);
 
@@ -58,19 +67,17 @@
                     const storedMessages = localStorage.getItem('ai-messages');
                     const storedContext = localStorage.getItem('ai-context');
                     const storedApiKey = localStorage.getItem('anthropic-api-key');
-                    const storedBriefing = localStorage.getItem('last-briefing');
                     
                     if (storedTasks) setTasks(JSON.parse(storedTasks));
                     if (storedContext) setContextNotes(JSON.parse(storedContext));
                     if (storedApiKey) setApiKey(storedApiKey);
-                    if (storedBriefing) setLastBriefing(storedBriefing);
                     
                     if (storedMessages) {
                         setMessages(JSON.parse(storedMessages));
                     } else {
                         const welcomeMsg = {
                             role: 'assistant',
-                            content: "Hi! I'm your AI personal assistant. I'll help you manage tasks, remember important context about your projects, and keep you organized. I maintain full memory of everything you share with me!\n\nTry asking me:\n- 'What's on my plate today?'\n- 'Show me high priority tasks'\n- Tell me about your projects and goals",
+                            content: "Hi! I'm your AI personal assistant. I'll help you manage tasks, remember important context, and keep you organized.\n\n🔔 Daily notifications enabled:\n• 10:00 AM - Morning check-in\n• 2:00 PM - Afternoon reminder\n• 5:30 PM - Evening wrap-up\n(Sunday through Thursday)\n\nTry: 'What's on my plate?' or tell me about your projects!",
                             timestamp: new Date().toISOString()
                         };
                         setMessages([welcomeMsg]);
@@ -107,64 +114,69 @@
                 if ('Notification' in window) {
                     const permission = await Notification.requestPermission();
                     setNotificationsEnabled(permission === 'granted');
+                    if (permission === 'granted') {
+                        showNotification('Notifications Enabled!', 'You\'ll now receive daily reminders at 10 AM, 2 PM, and 5:30 PM (Sun-Thu)');
+                    }
                 }
             };
 
-            const checkDailyBriefing = () => {
-                const today = new Date().toDateString();
-                const lastBriefingDate = localStorage.getItem('last-briefing');
+            const setupScheduledNotifications = () => {
+                // Mark initial setup
+                const setupKey = 'notifications-setup';
+                if (!localStorage.getItem(setupKey)) {
+                    localStorage.setItem(setupKey, 'true');
+                }
+            };
+
+            const checkScheduledNotifications = () => {
+                if (!notificationsEnabled) return;
+
+                const now = new Date();
+                const day = now.getDay(); // 0=Sunday, 1=Monday, ... 6=Saturday
                 
-                if (lastBriefingDate !== today && apiKey) {
-                    setTimeout(() => {
-                        generateDailyBriefing();
-                    }, 2000);
-                }
+                // Only Sun(0), Mon(1), Tue(2), Wed(3), Thu(4)
+                if (day === 5 || day === 6) return; // Skip Friday and Saturday
+
+                const currentHour = now.getHours();
+                const currentMinute = now.getMinutes();
+
+                notificationTimes.forEach(time => {
+                    if (currentHour === time.hour && currentMinute === time.minute) {
+                        const lastNotifKey = `last-notif-${time.hour}-${time.minute}`;
+                        const lastNotif = localStorage.getItem(lastNotifKey);
+                        const today = now.toDateString();
+
+                        // Only send once per day per time slot
+                        if (lastNotif !== today) {
+                            sendScheduledNotification(time.label);
+                            localStorage.setItem(lastNotifKey, today);
+                        }
+                    }
+                });
             };
 
-            const generateDailyBriefing = async () => {
-                if (!apiKey) return;
-
+            const sendScheduledNotification = (label) => {
                 const pendingTasks = tasks.filter(t => !t.completed);
+                const highPriority = pendingTasks.filter(t => t.priority === 'high').length;
+                
                 const today = new Date();
                 const todayTasks = pendingTasks.filter(t => {
                     if (!t.dueDate) return false;
                     const due = new Date(t.dueDate);
                     return due.toDateString() === today.toDateString();
-                });
-                const overdueTasks = pendingTasks.filter(t => {
-                    if (!t.dueDate) return false;
-                    return new Date(t.dueDate) < today;
-                });
+                }).length;
 
-                const briefingPrompt = `Generate a brief morning briefing. Today is ${today.toDateString()}. Tasks due today: ${todayTasks.length}. Overdue tasks: ${overdueTasks.length}. Total pending: ${pendingTasks.length}. High priority tasks: ${pendingTasks.filter(t => t.priority === 'high').length}. Keep it under 100 words and motivating.`;
-
-                try {
-                    const response = await fetch('/api/chat', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            apiKey: apiKey,
-                            system: "You are a motivating personal assistant providing morning briefings.",
-                            messages: [{ role: 'user', content: briefingPrompt }]
-                        })
-                    });
-
-                    const data = await response.json();
-                    if (!data.error) {
-                        const briefing = data.content[0].text;
-                        const briefingMsg = {
-                            role: 'assistant',
-                            content: `☀️ Good morning!\n\n${briefing}`,
-                            timestamp: new Date().toISOString()
-                        };
-                        const newMessages = [...messages, briefingMsg];
-                        setMessages(newMessages);
-                        saveMessages(newMessages);
-                        localStorage.setItem('last-briefing', today.toDateString());
-                    }
-                } catch (error) {
-                    console.error('Briefing error:', error);
+                let message = '';
+                if (label === 'Morning Check-in') {
+                    message = `Good morning! You have ${pendingTasks.length} task${pendingTasks.length !== 1 ? 's' : ''} today.${highPriority > 0 ? ` ${highPriority} high priority.` : ''}`;
+                } else if (label === 'Afternoon Reminder') {
+                    message = `Afternoon check-in: ${pendingTasks.length} task${pendingTasks.length !== 1 ? 's' : ''} still pending.${todayTasks > 0 ? ` ${todayTasks} due today!` : ''}`;
+                } else if (label === 'Evening Wrap-up') {
+                    const completed = tasks.filter(t => t.completed && new Date(t.createdAt).toDateString() === today.toDateString()).length;
+                    message = `End of day: ${completed} task${completed !== 1 ? 's' : ''} completed today. ${pendingTasks.length} still pending.`;
                 }
+
+                showNotification(label, message);
             };
 
             const checkReminders = () => {
@@ -174,9 +186,20 @@
                         const reminderTime = new Date(task.reminder);
                         const diff = reminderTime - now;
                         if (diff > 0 && diff < 60000) {
-                            new Notification('Task Reminder', { body: task.title });
+                            showNotification('Task Reminder', task.title);
                         }
                     }
+                });
+            };
+
+            const showNotification = (title, body) => {
+                if (!notificationsEnabled || !('Notification' in window)) return;
+                
+                new Notification(title, {
+                    body: body,
+                    icon: '✓',
+                    requireInteraction: false,
+                    tag: 'task-manager'
                 });
             };
 
@@ -461,10 +484,18 @@ Be proactive, helpful, and maintain full awareness of the user's context!`;
 
                             {!notificationsEnabled && (
                                 <div className="p-4 bg-blue-50 border-t border-blue-200">
+                                    <p className="text-xs text-blue-800 mb-2">Enable daily reminders at 10 AM, 2 PM & 5:30 PM (Sun-Thu)</p>
                                     <button onClick={requestNotificationPermission} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
                                         <Bell size={18} />
-                                        Enable Reminders
+                                        Enable Notifications
                                     </button>
+                                </div>
+                            )}
+
+                            {notificationsEnabled && (
+                                <div className="p-4 bg-green-50 border-t border-green-200">
+                                    <p className="text-xs text-green-800">✓ Daily notifications enabled</p>
+                                    <p className="text-xs text-green-700 mt-1">10 AM • 2 PM • 5:30 PM (Sun-Thu)</p>
                                 </div>
                             )}
                         </div>
@@ -476,7 +507,7 @@ Be proactive, helpful, and maintain full awareness of the user's context!`;
                                     AI Personal Assistant
                                 </h2>
                                 <p className="text-sm text-gray-600 mt-1">
-                                    {apiKey ? 'Full context memory • Proactive briefings' : 'Add API key to enable AI'}
+                                    {apiKey ? 'Full context memory • Daily notifications' : 'Add API key to enable AI'}
                                 </p>
                             </div>
 
