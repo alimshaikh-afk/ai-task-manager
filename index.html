@@ -8,9 +8,18 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif; }
+        #root { height: 100vh; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
-        import { getFirestore, collection, doc, setDoc, getDoc, getDocs, deleteDoc, onSnapshot, query, orderBy } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
+        import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, query, orderBy } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
         
         const firebaseConfig = {
             apiKey: "AIzaSyDiy_mVFVhjZddTgM6kYELKc4uB_uygyoc",
@@ -23,17 +32,17 @@
         
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
+        
         window.firebaseDb = db;
+        window.firebaseCollection = collection;
+        window.firebaseDoc = doc;
+        window.firebaseSetDoc = setDoc;
+        window.firebaseDeleteDoc = deleteDoc;
+        window.firebaseOnSnapshot = onSnapshot;
+        window.firebaseQuery = query;
+        window.firebaseOrderBy = orderBy;
         window.firebaseReady = true;
     </script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif; }
-        #root { height: 100vh; }
-    </style>
-</head>
-<body>
-    <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
@@ -77,12 +86,23 @@
                 initializeUser();
                 loadLocalData();
                 checkNotificationPermission();
-                setupScheduledNotifications();
-                const interval = setInterval(() => {
+                
+                const checkFirebase = setInterval(() => {
+                    if (window.firebaseReady && userId) {
+                        clearInterval(checkFirebase);
+                        syncWithFirebase();
+                    }
+                }, 100);
+
+                const notifInterval = setInterval(() => {
                     checkReminders();
                     checkScheduledNotifications();
                 }, 60000);
-                return () => clearInterval(interval);
+
+                return () => {
+                    clearInterval(checkFirebase);
+                    clearInterval(notifInterval);
+                };
             }, []);
 
             useEffect(() => {
@@ -111,15 +131,13 @@
                 }
             };
 
-            const syncWithFirebase = async () => {
-                if (!window.firebaseDb || !userId) return;
+            const syncWithFirebase = () => {
+                if (!window.firebaseDb || !userId || !window.firebaseReady) return;
 
                 try {
-                    const { collection, doc, onSnapshot, query, orderBy } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
-                    
-                    // Listen to tasks
-                    const tasksRef = collection(window.firebaseDb, `users/${userId}/tasks`);
-                    onSnapshot(tasksRef, (snapshot) => {
+                    // Tasks
+                    const tasksRef = window.firebaseCollection(window.firebaseDb, `users/${userId}/tasks`);
+                    window.firebaseOnSnapshot(tasksRef, (snapshot) => {
                         const tasksList = [];
                         snapshot.forEach((doc) => {
                             tasksList.push({ id: doc.id, ...doc.data() });
@@ -128,9 +146,9 @@
                         setCloudSynced(true);
                     });
 
-                    // Listen to context notes
-                    const contextRef = collection(window.firebaseDb, `users/${userId}/context`);
-                    onSnapshot(contextRef, (snapshot) => {
+                    // Context
+                    const contextRef = window.firebaseCollection(window.firebaseDb, `users/${userId}/context`);
+                    window.firebaseOnSnapshot(contextRef, (snapshot) => {
                         const contextList = [];
                         snapshot.forEach((doc) => {
                             contextList.push({ id: doc.id, ...doc.data() });
@@ -138,10 +156,10 @@
                         setContextNotes(contextList);
                     });
 
-                    // Listen to messages
-                    const messagesRef = collection(window.firebaseDb, `users/${userId}/messages`);
-                    const messagesQuery = query(messagesRef, orderBy('timestamp', 'asc'));
-                    onSnapshot(messagesQuery, (snapshot) => {
+                    // Messages
+                    const messagesRef = window.firebaseCollection(window.firebaseDb, `users/${userId}/messages`);
+                    const messagesQuery = window.firebaseQuery(messagesRef, window.firebaseOrderBy('timestamp', 'asc'));
+                    window.firebaseOnSnapshot(messagesQuery, (snapshot) => {
                         const messagesList = [];
                         snapshot.forEach((doc) => {
                             messagesList.push({ id: doc.id, ...doc.data() });
@@ -167,50 +185,50 @@
             };
 
             const saveTaskToCloud = async (task) => {
-                if (!window.firebaseDb || !userId) return;
+                if (!window.firebaseDb || !userId || !window.firebaseReady) return;
                 try {
-                    const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
-                    await setDoc(doc(window.firebaseDb, `users/${userId}/tasks`, task.id), task);
+                    const docRef = window.firebaseDoc(window.firebaseDb, `users/${userId}/tasks`, task.id);
+                    await window.firebaseSetDoc(docRef, task);
                 } catch (error) {
                     console.error('Error saving task:', error);
                 }
             };
 
             const deleteTaskFromCloud = async (taskId) => {
-                if (!window.firebaseDb || !userId) return;
+                if (!window.firebaseDb || !userId || !window.firebaseReady) return;
                 try {
-                    const { doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
-                    await deleteDoc(doc(window.firebaseDb, `users/${userId}/tasks`, taskId));
+                    const docRef = window.firebaseDoc(window.firebaseDb, `users/${userId}/tasks`, taskId);
+                    await window.firebaseDeleteDoc(docRef);
                 } catch (error) {
                     console.error('Error deleting task:', error);
                 }
             };
 
             const saveContextToCloud = async (note) => {
-                if (!window.firebaseDb || !userId) return;
+                if (!window.firebaseDb || !userId || !window.firebaseReady) return;
                 try {
-                    const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
-                    await setDoc(doc(window.firebaseDb, `users/${userId}/context`, note.id), note);
+                    const docRef = window.firebaseDoc(window.firebaseDb, `users/${userId}/context`, note.id);
+                    await window.firebaseSetDoc(docRef, note);
                 } catch (error) {
                     console.error('Error saving context:', error);
                 }
             };
 
             const deleteContextFromCloud = async (noteId) => {
-                if (!window.firebaseDb || !userId) return;
+                if (!window.firebaseDb || !userId || !window.firebaseReady) return;
                 try {
-                    const { doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
-                    await deleteDoc(doc(window.firebaseDb, `users/${userId}/context`, noteId));
+                    const docRef = window.firebaseDoc(window.firebaseDb, `users/${userId}/context`, noteId);
+                    await window.firebaseDeleteDoc(docRef);
                 } catch (error) {
                     console.error('Error deleting context:', error);
                 }
             };
 
             const saveMessageToCloud = async (message) => {
-                if (!window.firebaseDb || !userId) return;
+                if (!window.firebaseDb || !userId || !window.firebaseReady) return;
                 try {
-                    const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
-                    await setDoc(doc(window.firebaseDb, `users/${userId}/messages`, message.id || Date.now().toString()), message);
+                    const docRef = window.firebaseDoc(window.firebaseDb, `users/${userId}/messages`, message.id || Date.now().toString());
+                    await window.firebaseSetDoc(docRef, message);
                 } catch (error) {
                     console.error('Error saving message:', error);
                 }
@@ -237,15 +255,8 @@
                     const permission = await Notification.requestPermission();
                     setNotificationsEnabled(permission === 'granted');
                     if (permission === 'granted') {
-                        showNotification('Notifications Enabled!', 'You\'ll receive daily reminders at 10 AM, 2 PM, and 5:30 PM');
+                        showNotification('Notifications Enabled!', 'Daily reminders at 10 AM, 2 PM, 5:30 PM');
                     }
-                }
-            };
-
-            const setupScheduledNotifications = () => {
-                const setupKey = 'notifications-setup';
-                if (!localStorage.getItem(setupKey)) {
-                    localStorage.setItem(setupKey, 'true');
                 }
             };
 
@@ -293,7 +304,7 @@
                         })
                     });
                 } catch (error) {
-                    console.error('Email send error:', error);
+                    console.log('Email send skipped:', error);
                 }
             };
 
@@ -303,11 +314,11 @@
                 
                 let message = '';
                 if (label === 'Morning Check-in') {
-                    message = `Good morning! You have ${pendingTasks.length} task${pendingTasks.length !== 1 ? 's' : ''}.${highPriority > 0 ? ` ${highPriority} high priority.` : ''}`;
+                    message = `Good morning! ${pendingTasks.length} task${pendingTasks.length !== 1 ? 's' : ''}.${highPriority > 0 ? ` ${highPriority} high priority.` : ''}`;
                 } else if (label === 'Afternoon Reminder') {
-                    message = `Afternoon check-in: ${pendingTasks.length} task${pendingTasks.length !== 1 ? 's' : ''} pending.`;
+                    message = `Afternoon: ${pendingTasks.length} task${pendingTasks.length !== 1 ? 's' : ''} pending.`;
                 } else if (label === 'Evening Wrap-up') {
-                    message = `End of day: ${pendingTasks.length} task${pendingTasks.length !== 1 ? 's' : ''} still pending.`;
+                    message = `End of day: ${pendingTasks.length} pending.`;
                 }
 
                 showNotification(label, message);
@@ -328,7 +339,7 @@
 
             const showNotification = (title, body) => {
                 if (!notificationsEnabled || !('Notification' in window)) return;
-                new Notification(title, { body: body, icon: '✓' });
+                new Notification(title, { body: body });
             };
 
             const addTask = (taskData) => {
@@ -372,7 +383,7 @@
             const sendMessage = async () => {
                 if (!inputMessage.trim() || isLoading) return;
                 if (!apiKey) {
-                    setShowApiKeyModal(true);
+                    setShowSettingsModal(true);
                     return;
                 }
 
@@ -394,15 +405,15 @@
 
                     const contextInfo = contextNotes.map(n => `- ${n.content}`).join('\n');
 
-                    const systemPrompt = `You are a personal AI assistant with full context memory and cloud sync.
+                    const systemPrompt = `You are a personal AI assistant with full context memory.
 
 CURRENT TASKS:
 ${taskContext || 'None'}
 
-STORED CONTEXT:
+CONTEXT:
 ${contextInfo || 'None'}
 
-Respond with JSON: {"response":"message","tasks":[...],"context_notes":[...]}`;
+Respond with JSON: {"response":"message","tasks":[{"title":"","priority":"high|medium|low","dueDate":"YYYY-MM-DD","category":""}],"context_notes":["note"]}`;
 
                     const response = await fetch('/api/chat', {
                         method: 'POST',
@@ -497,7 +508,7 @@ Respond with JSON: {"response":"message","tasks":[...],"context_notes":[...]}`;
                                 </div>
 
                                 {highPriorityTasks.length > 0 && (
-                                    <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
+                                    <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                                         <p className="text-sm font-semibold text-red-800">🔥 {highPriorityTasks.length} High Priority</p>
                                     </div>
                                 )}
@@ -507,7 +518,7 @@ Respond with JSON: {"response":"message","tasks":[...],"context_notes":[...]}`;
                                 {pendingTasks.length === 0 && completedTasks.length === 0 && (
                                     <div className="text-center py-12 text-gray-400">
                                         <Circle size={48} />
-                                        <p className="mt-3">No tasks yet. Start chatting!</p>
+                                        <p className="mt-3">No tasks yet!</p>
                                     </div>
                                 )}
 
@@ -560,7 +571,7 @@ Respond with JSON: {"response":"message","tasks":[...],"context_notes":[...]}`;
 
                             {!notificationsEnabled && (
                                 <div className="p-4 bg-blue-50 border-t border-blue-200">
-                                    <p className="text-xs text-blue-800 mb-2">Enable notifications (10 AM, 2 PM, 5:30 PM)</p>
+                                    <p className="text-xs text-blue-800 mb-2">Enable daily reminders</p>
                                     <button onClick={requestNotificationPermission} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
                                         <Bell size={18} />
                                         Enable Notifications
@@ -573,10 +584,10 @@ Respond with JSON: {"response":"message","tasks":[...],"context_notes":[...]}`;
                             <div className="p-6 bg-white border-b border-gray-200">
                                 <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                                     <Sparkles size={24} className="text-purple-600" />
-                                    AI Personal Assistant
+                                    AI Assistant
                                 </h2>
                                 <p className="text-sm text-gray-600 mt-1">
-                                    {apiKey ? 'Cloud sync • Email reminders • Full memory' : 'Add API key to enable'}
+                                    {apiKey ? 'Cloud sync • Email reminders' : 'Add API key to enable'}
                                 </p>
                             </div>
 
@@ -603,9 +614,6 @@ Respond with JSON: {"response":"message","tasks":[...],"context_notes":[...]}`;
                                     <button onClick={() => setInputMessage("What's on my plate?")} className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-full">
                                         What's on my plate?
                                     </button>
-                                    <button onClick={() => setInputMessage("Show high priority")} className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-full">
-                                        High priority
-                                    </button>
                                 </div>
                                 <div className="flex gap-3">
                                     <input
@@ -613,7 +621,7 @@ Respond with JSON: {"response":"message","tasks":[...],"context_notes":[...]}`;
                                         value={inputMessage}
                                         onChange={(e) => setInputMessage(e.target.value)}
                                         onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                                        placeholder={apiKey ? "Tell me about your projects..." : "Add API key in settings..."}
+                                        placeholder={apiKey ? "Tell me about your projects..." : "Add API key..."}
                                         className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                                         disabled={isLoading}
                                     />
@@ -636,7 +644,7 @@ Respond with JSON: {"response":"message","tasks":[...],"context_notes":[...]}`;
                                         {apiKey && <p className="text-xs text-green-600 mt-1">✓ Configured</p>}
                                     </div>
                                     <div>
-                                        <label className="text-sm font-medium">Your Email (for reminders)</label>
+                                        <label className="text-sm font-medium">Email (for reminders)</label>
                                         <input type="email" value={tempEmail} onChange={(e) => setTempEmail(e.target.value)} placeholder="you@example.com" className="w-full px-4 py-2 border rounded-lg mt-1" />
                                         {userEmail && <p className="text-xs text-green-600 mt-1">✓ {userEmail}</p>}
                                     </div>
@@ -660,7 +668,7 @@ Respond with JSON: {"response":"message","tasks":[...],"context_notes":[...]}`;
                                     <button onClick={() => setShowContextModal(false)} className="text-gray-500">✕</button>
                                 </div>
                                 {contextNotes.length === 0 ? (
-                                    <p className="text-gray-400 text-center py-8">No context stored yet</p>
+                                    <p className="text-gray-400 text-center py-8">No context yet</p>
                                 ) : (
                                     <div className="space-y-2">
                                         {contextNotes.map(note => (
