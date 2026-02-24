@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -342,6 +342,28 @@
                 new Notification(title, { body: body });
             };
 
+            const sendTestNotification = () => {
+                if (!notificationsEnabled) {
+                    alert('Please enable notifications first!');
+                    return;
+                }
+                if (!('Notification' in window)) {
+                    alert('Your browser does not support notifications');
+                    return;
+                }
+                try {
+                    new Notification('🔔 Test Notification', {
+                        body: `You have ${pendingTasks.length} pending task${pendingTasks.length !== 1 ? 's' : ''}. Notifications are working!`,
+                        icon: '✓',
+                        requireInteraction: false
+                    });
+                    console.log('Test notification sent successfully');
+                } catch (error) {
+                    console.error('Notification error:', error);
+                    alert('Error sending notification: ' + error.message);
+                }
+            };
+
             const addTask = (taskData) => {
                 const newTask = {
                     id: Date.now().toString(),
@@ -581,7 +603,7 @@ Respond with JSON: {"response":"message","tasks":[{"title":"","priority":"high|m
                                 ) : (
                                     <>
                                         <p className="text-xs text-green-800 mb-2">✓ Notifications enabled</p>
-                                        <button onClick={() => showNotification('Test Notification', `You have ${pendingTasks.length} pending tasks. This is a test!`)} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                                        <button onClick={sendTestNotification} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
                                             <Bell size={18} />
                                             Send Test Notification
                                         </button>
