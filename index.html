@@ -343,6 +343,41 @@
             };
 
             const sendTestNotification = () => {
+                if (!userEmail) {
+                    alert('Please add your email in Settings first!');
+                    setShowSettingsModal(true);
+                    return;
+                }
+
+                try {
+                    const pendingTasks = tasks.filter(t => !t.completed);
+                    const highPriority = pendingTasks.filter(t => t.priority === 'high');
+                    
+                    const response = await fetch('/api/send-email', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            to: userEmail,
+                            subject: 'Test Email - Task Manager',
+                            tasks: pendingTasks.length > 0 ? pendingTasks : [{ title: 'Sample task', priority: 'medium' }],
+                            highPriority: highPriority.length,
+                            label: 'Test Email'
+                        })
+                    });
+
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        alert(`✅ Test email sent to ${userEmail}! Check your inbox (and spam folder).`);
+                    } else {
+                        alert(`❌ Error: ${data.error || 'Failed to send email'}`);
+                        console.error('Email error:', data);
+                    }
+                } catch (error) {
+                    alert(`❌ Error sending email: ${error.message}`);
+                    console.error('Email send error:', error);
+                }
+            };
                 if (!notificationsEnabled) {
                     alert('Please enable notifications first!');
                     return;
@@ -680,6 +715,11 @@ Respond with JSON: {"response":"message","tasks":[{"title":"","priority":"high|m
                                         <input type="email" value={tempEmail} onChange={(e) => setTempEmail(e.target.value)} placeholder="you@example.com" className="w-full px-4 py-2 border rounded-lg mt-1" />
                                         {userEmail && <p className="text-xs text-green-600 mt-1">✓ {userEmail}</p>}
                                     </div>
+                                    {userEmail && (
+                                        <button onClick={sendTestEmail} className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                                            Send Test Email Now
+                                        </button>
+                                    )}
                                 </div>
                                 <div className="flex gap-3 mt-6">
                                     <button onClick={() => { setShowSettingsModal(false); setTempApiKey(''); setTempEmail(''); }} className="flex-1 px-4 py-2 border rounded-lg">Cancel</button>
