@@ -9,7 +9,7 @@ export default async function handler(req, res) {
 
   try {
     // Use the correct Firestore REST API URL format
-    const firestoreUrl = 'https://firestore.googleapis.com/v1/projects/' + FIREBASE_PROJECT_ID + '/databases/(default)/documents/users/default_user';
+    const firestoreUrl = 'https://firestore.googleapis.com/v1/projects/' + FIREBASE_PROJECT_ID + '/databases/(default)/documents/users/user_1771776063693_f3uvlvfzg';
     
     console.log('Fetching:', firestoreUrl);
     
