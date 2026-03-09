@@ -1,6 +1,7 @@
 export default async function handler(req, res) {
   const USER_EMAIL = 'alim.shaikh@penny.co';
   const FIREBASE_PROJECT_ID = 'ai-personal-assistant-225fe';
+  const USER_DOC_ID = 'user_1771776063693_f3uvlvfzg';
   const RESEND_API_KEY = process.env.RESEND_API_KEY;
 
   if (!RESEND_API_KEY) {
@@ -8,57 +9,49 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Use the correct Firestore REST API URL format
-    const firestoreUrl = 'https://firestore.googleapis.com/v1/projects/' + FIREBASE_PROJECT_ID + '/databases/(default)/documents/users/user_1771776063693_f3uvlvfzg';
-    
+    // Query the tasks subcollection
+    const firestoreUrl = 'https://firestore.googleapis.com/v1/projects/' + FIREBASE_PROJECT_ID + '/databases/(default)/documents/users/' + USER_DOC_ID + '/tasks';
+
     console.log('Fetching:', firestoreUrl);
-    
+
     const firebaseRes = await fetch(firestoreUrl, {
-      headers: {
-        'Content-Type': 'application/json'
-      }
+      headers: { 'Content-Type': 'application/json' }
     });
 
     console.log('Firebase status:', firebaseRes.status);
 
     if (!firebaseRes.ok) {
       const errorText = await firebaseRes.text();
-      console.log('Firebase error body:', errorText);
-      return res.status(500).json({ 
+      return res.status(500).json({
         error: 'Firebase fetch failed: ' + firebaseRes.status,
         details: errorText.slice(0, 500)
       });
     }
 
     const firebaseData = await firebaseRes.json();
-    console.log('Firebase data keys:', Object.keys(firebaseData));
+    console.log('Firebase response keys:', Object.keys(firebaseData));
 
-    // Parse Firestore document format
+    // Parse subcollection response — it's a list of documents
     let tasks = [];
-    try {
-      const tasksField = firebaseData.fields && firebaseData.fields.tasks;
-      if (tasksField && tasksField.arrayValue && tasksField.arrayValue.values) {
-        tasks = tasksField.arrayValue.values.map(item => {
-          const f = item.mapValue && item.mapValue.fields;
-          if (!f) return null;
-          return {
-            title: (f.title && f.title.stringValue) || 'Untitled',
-            priority: (f.priority && f.priority.stringValue) || 'medium',
-            dueDate: (f.dueDate && f.dueDate.stringValue) || null,
-            category: (f.category && f.category.stringValue) || 'General',
-            completed: (f.completed && f.completed.booleanValue) || false,
-          };
-        }).filter(t => t && !t.completed);
-      }
-    } catch (parseErr) {
-      console.log('Parse error:', parseErr.message);
-    }
+    const documents = firebaseData.documents || [];
+
+    tasks = documents.map(doc => {
+      const f = doc.fields;
+      if (!f) return null;
+      return {
+        title: (f.title && f.title.stringValue) || 'Untitled',
+        priority: (f.priority && f.priority.stringValue) || 'medium',
+        dueDate: (f.dueDate && f.dueDate.stringValue) || null,
+        category: (f.category && f.category.stringValue) || 'General',
+        completed: (f.completed && f.completed.booleanValue) || false,
+      };
+    }).filter(t => t && !t.completed);
 
     console.log('Tasks found:', tasks.length);
 
     const highPriority = tasks.filter(t => t.priority === 'high').length;
 
-    // Determine label based on Bahrain time (UTC+3)
+    // Label based on Bahrain time (UTC+3)
     const now = new Date();
     const bahrainHour = (now.getUTCHours() + 3) % 24;
     let label = '📋 Task Reminder';
