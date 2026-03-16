@@ -76,9 +76,17 @@ async function fbSave(field, value) {
 async function fbLoadAll() {
     if (!window.firebaseReady) return null;
     try {
-        const { doc, getDoc } = window.firebaseModules;
+        const { doc, getDoc, collection, getDocs } = window.firebaseModules;
+        // Try the known user ID first
         const snap = await getDoc(doc(window.firebaseDb, 'users', USER_ID));
         if (snap.exists()) return snap.data();
+        // Fallback: scan users collection for first document
+        const colSnap = await getDocs(collection(window.firebaseDb, 'users'));
+        if (!colSnap.empty) {
+            const firstDoc = colSnap.docs[0];
+            console.log('Found user doc:', firstDoc.id);
+            return firstDoc.data();
+        }
     } catch(e) { console.warn('FB load error:', e); }
     return null;
 }
@@ -375,8 +383,22 @@ IMPORTANT: Always extract customer names from user messages when creating tasks.
 
             const aiText = data.content[0].text;
             let parsed;
-            try { parsed = JSON.parse(aiText.replace(/```json\n?|\n?```/g,'').trim()); }
-            catch { parsed = { response: aiText }; }
+            try {
+                parsed = JSON.parse(aiText.replace(/```json\n?|\n?```/g,'').trim());
+            } catch(e1) {
+                try {
+                    const jsonMatch = aiText.match(/\{[\s\S]*\}/);
+                    if (jsonMatch) {
+                        parsed = JSON.parse(jsonMatch[0]);
+                        const textBefore = aiText.slice(0, aiText.indexOf(jsonMatch[0])).trim();
+                        if (textBefore && !parsed.response) parsed.response = textBefore;
+                    } else {
+                        parsed = { response: aiText };
+                    }
+                } catch(e2) {
+                    parsed = { response: aiText };
+                }
+            }
 
             if (parsed.new_tasks && Array.isArray(parsed.new_tasks)) {
                 parsed.new_tasks.forEach(t => addTask(t));
