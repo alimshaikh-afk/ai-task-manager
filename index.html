@@ -69,20 +69,24 @@ const USER_ID = 'user_1771776063693_f3uvlvfzg';
 async function fbSave(field, value) {
     if (!window.firebaseReady) return;
     try {
-        const { doc, setDoc, collection, addDoc, getDocs, deleteDoc } = window.firebaseModules;
+        const { doc, setDoc, deleteDoc } = window.firebaseModules;
         if (field === 'tasks') {
-            // Tasks are stored as a subcollection
-            // First delete all existing task docs, then re-add
-            const tasksCol = collection(window.firebaseDb, 'users', USER_ID, 'tasks');
-            const existing = await getDocs(tasksCol);
-            const deletes = existing.docs.map(d => deleteDoc(d.ref));
-            await Promise.all(deletes);
-            const adds = value.map(task => addDoc(tasksCol, task));
-            await Promise.all(adds);
+            // Save each task as its own document using task.id as doc ID
+            for (const task of value) {
+                await setDoc(doc(window.firebaseDb, 'users', USER_ID, 'tasks', task.id), task);
+            }
         } else {
             await setDoc(doc(window.firebaseDb, 'users', USER_ID), { [field]: value }, { merge: true });
         }
     } catch(e) { console.warn('FB save error:', e); }
+}
+
+async function fbDeleteTask(taskId) {
+    if (!window.firebaseReady) return;
+    try {
+        const { doc, deleteDoc } = window.firebaseModules;
+        await deleteDoc(doc(window.firebaseDb, 'users', USER_ID, 'tasks', taskId));
+    } catch(e) { console.warn('FB delete error:', e); }
 }
 async function fbLoadAll() {
     if (!window.firebaseReady) return null;
@@ -247,11 +251,6 @@ const TaskManager = () => {
     }
 
     // ── Task CRUD ──────────────────────────────────────────────────────────
-    function saveTasks(updated) {
-        setTasks(updated);
-        fbSave('tasks', updated);
-        localStorage.setItem('ai-tasks', JSON.stringify(updated));
-    }
     function addTask(taskData) {
         const t = {
             id: Date.now().toString(36) + Math.random().toString(36).slice(2),
@@ -264,17 +263,40 @@ const TaskManager = () => {
             completed: false,
             createdAt: new Date().toISOString()
         };
-        saveTasks([...tasks, t]);
+        setTasks(prev => {
+            const updated = [...prev, t];
+            localStorage.setItem('ai-tasks', JSON.stringify(updated));
+            return updated;
+        });
+        // Save just this one task to Firebase
+        fbSave('tasks', [t]);
         return t;
     }
     function updateTask(id, changes) {
-        saveTasks(tasks.map(t => t.id === id ? { ...t, ...changes } : t));
+        setTasks(prev => {
+            const updated = prev.map(t => t.id === id ? { ...t, ...changes } : t);
+            localStorage.setItem('ai-tasks', JSON.stringify(updated));
+            const changedTask = updated.find(t => t.id === id);
+            if (changedTask) fbSave('tasks', [changedTask]);
+            return updated;
+        });
     }
     function toggleTask(id) {
-        saveTasks(tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+        setTasks(prev => {
+            const updated = prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t);
+            localStorage.setItem('ai-tasks', JSON.stringify(updated));
+            const changedTask = updated.find(t => t.id === id);
+            if (changedTask) fbSave('tasks', [changedTask]);
+            return updated;
+        });
     }
     function deleteTask(id) {
-        saveTasks(tasks.filter(t => t.id !== id));
+        setTasks(prev => {
+            const updated = prev.filter(t => t.id !== id);
+            localStorage.setItem('ai-tasks', JSON.stringify(updated));
+            return updated;
+        });
+        fbDeleteTask(id);
     }
 
     // ── Derived data ───────────────────────────────────────────────────────
