@@ -76,16 +76,13 @@ async function fbSave(field, value) {
 async function fbLoadAll() {
     if (!window.firebaseReady) return null;
     try {
-        const { doc, getDoc, collection, getDocs } = window.firebaseModules;
-        // Try the known user ID first
+        const { doc, getDoc } = window.firebaseModules;
         const snap = await getDoc(doc(window.firebaseDb, 'users', USER_ID));
-        if (snap.exists()) return snap.data();
-        // Fallback: scan users collection for first document
-        const colSnap = await getDocs(collection(window.firebaseDb, 'users'));
-        if (!colSnap.empty) {
-            const firstDoc = colSnap.docs[0];
-            console.log('Found user doc:', firstDoc.id);
-            return firstDoc.data();
+        if (snap.exists()) {
+            console.log('Loaded data from Firebase for:', USER_ID);
+            return snap.data();
+        } else {
+            console.log('No data found for USER_ID:', USER_ID);
         }
     } catch(e) { console.warn('FB load error:', e); }
     return null;
