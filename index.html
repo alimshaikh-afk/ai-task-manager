@@ -3,24 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Personal Assistant</title>
+    <title>AI Task Manager</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif; }
-        #root { height: 100vh; }
-    </style>
-</head>
-<body>
-    <div id="root"></div>
-
     <script type="module">
-        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
-        import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, query, orderBy } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
-        
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
         const firebaseConfig = {
             apiKey: "AIzaSyDiy_mVFVhjZddTgM6kYELKc4uB_uygyoc",
             authDomain: "ai-personal-assistant-225fe.firebaseapp.com",
@@ -29,737 +19,751 @@
             messagingSenderId: "564158119450",
             appId: "1:564158119450:web:ce50c57e2832876dfd5ba3"
         };
-        
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
-        
         window.firebaseDb = db;
-        window.firebaseCollection = collection;
-        window.firebaseDoc = doc;
-        window.firebaseSetDoc = setDoc;
-        window.firebaseDeleteDoc = deleteDoc;
-        window.firebaseOnSnapshot = onSnapshot;
-        window.firebaseQuery = query;
-        window.firebaseOrderBy = orderBy;
+        window.firebaseModules = { doc, setDoc, getDoc, collection, getDocs };
         window.firebaseReady = true;
+        window.dispatchEvent(new Event('firebaseReady'));
     </script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        #root { height: 100vh; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .animate-spin { animation: spin 1s linear infinite; }
+        .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+        .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 2px; }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useMemo } = React;
 
-    <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+// ── Icons ──────────────────────────────────────────────────────────────────
+const Icon = ({ d, size=18, className="" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{d}</svg>
+);
+const CheckCircle = ({size=18,className=""}) => <Icon size={size} className={className} d={<><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></>}/>;
+const Circle = ({size=18,className=""}) => <Icon size={size} className={className} d={<circle cx="12" cy="12" r="10"/>}/>;
+const Trash = ({size=16,className=""}) => <Icon size={size} className={className} d={<><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></>}/>;
+const Send = ({size=16,className=""}) => <Icon size={size} className={className} d={<><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></>}/>;
+const Loader = ({size=18,className=""}) => <Icon size={size} className={className} d={<path d="M21 12a9 9 0 1 1-6.219-8.56"/>}/>;
+const Sparkles = ({size=18,className=""}) => <Icon size={size} className={className} d={<><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4M3 5h4M6 17v4M4 19h4"/></>}/>;
+const Bell = ({size=18,className=""}) => <Icon size={size} className={className} d={<><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></>}/>;
+const SettingsIcon = ({size=18,className=""}) => <Icon size={size} className={className} d={<><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></>}/>;
+const Brain = ({size=18,className=""}) => <Icon size={size} className={className} d={<><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.46 2.5 2.5 0 0 1-1.04-4.69A2.5 2.5 0 0 1 4.5 9.5a2.5 2.5 0 0 1 2.16-2.47A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.46 2.5 2.5 0 0 0 1.04-4.69A2.5 2.5 0 0 0 19.5 9.5a2.5 2.5 0 0 0-2.16-2.47A2.5 2.5 0 0 0 14.5 2Z"/></>}/>;
+const Search = ({size=16,className=""}) => <Icon size={size} className={className} d={<><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></>}/>;
+const Filter = ({size=16,className=""}) => <Icon size={size} className={className} d={<><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></>}/>;
+const ChevronDown = ({size=14,className=""}) => <Icon size={size} className={className} d={<path d="m6 9 6 6 6-6"/>}/>;
+const ChevronRight = ({size=14,className=""}) => <Icon size={size} className={className} d={<path d="m9 18 6-6-6-6"/>}/>;
+const User = ({size=14,className=""}) => <Icon size={size} className={className} d={<><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></>}/>;
+const X = ({size=14,className=""}) => <Icon size={size} className={className} d={<><path d="M18 6 6 18"/><path d="m6 6 12 12"/></>}/>;
+const Mail = ({size=16,className=""}) => <Icon size={size} className={className} d={<><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></>}/>;
+const Edit = ({size=14,className=""}) => <Icon size={size} className={className} d={<><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></>}/>;
 
-        const CheckCircle2 = ({ size = 24, className = "" }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>);
-        const Circle = ({ size = 24 }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/></svg>);
-        const Trash2 = ({ size = 24 }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>);
-        const Send = ({ size = 24 }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>);
-        const Loader2 = ({ size = 24, className = "" }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>);
-        const Sparkles = ({ size = 24, className = "" }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4M3 5h4M6 17v4M4 19h4"/></svg>);
-        const Bell = ({ size = 24 }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>);
-        const Settings = ({ size = 24, className = "" }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>);
-        const Brain = ({ size = 24, className = "" }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg>);
-        const Cloud = ({ size = 24, className = "" }) => (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>);
+// ── Firebase helpers ───────────────────────────────────────────────────────
+const USER_ID = 'user_1771776063693_f3uvlvfzg';
+async function fbSave(field, value) {
+    if (!window.firebaseReady) return;
+    try {
+        const { doc, setDoc } = window.firebaseModules;
+        await setDoc(doc(window.firebaseDb, 'users', USER_ID), { [field]: value }, { merge: true });
+    } catch(e) { console.warn('FB save error:', e); }
+}
+async function fbLoadAll() {
+    if (!window.firebaseReady) return null;
+    try {
+        const { doc, getDoc } = window.firebaseModules;
+        const snap = await getDoc(doc(window.firebaseDb, 'users', USER_ID));
+        if (snap.exists()) return snap.data();
+    } catch(e) { console.warn('FB load error:', e); }
+    return null;
+}
 
-        const AssistantApp = () => {
-            const [tasks, setTasks] = useState([]);
-            const [messages, setMessages] = useState([]);
-            const [contextNotes, setContextNotes] = useState([]);
-            const [inputMessage, setInputMessage] = useState('');
-            const [isLoading, setIsLoading] = useState(false);
-            const [notificationsEnabled, setNotificationsEnabled] = useState(false);
-            const [showApiKeyModal, setShowApiKeyModal] = useState(false);
-            const [showContextModal, setShowContextModal] = useState(false);
-            const [showSettingsModal, setShowSettingsModal] = useState(false);
-            const [apiKey, setApiKey] = useState('');
-            const [userEmail, setUserEmail] = useState('');
-            const [tempApiKey, setTempApiKey] = useState('');
-            const [tempEmail, setTempEmail] = useState('');
-            const [userId, setUserId] = useState('');
-            const [cloudSynced, setCloudSynced] = useState(false);
-            const messagesEndRef = useRef(null);
+// ── Priority config ────────────────────────────────────────────────────────
+const PRIORITY_ORDER = { high: 0, medium: 1, low: 2 };
+const PRIORITY_COLORS = {
+    high:   { card: 'bg-red-50 border-red-200',   badge: 'bg-red-100 text-red-700',    dot: 'bg-red-500' },
+    medium: { card: 'bg-amber-50 border-amber-200', badge: 'bg-amber-100 text-amber-700', dot: 'bg-amber-400' },
+    low:    { card: 'bg-emerald-50 border-emerald-200', badge: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
+};
 
-            const notificationTimes = [
-                { hour: 10, minute: 0, label: 'Morning Check-in' },
-                { hour: 14, minute: 0, label: 'Afternoon Reminder' },
-                { hour: 17, minute: 30, label: 'Evening Wrap-up' }
-            ];
+// ── Customer color palette ─────────────────────────────────────────────────
+const CUSTOMER_COLORS = [
+    'bg-blue-100 text-blue-700 border-blue-200',
+    'bg-violet-100 text-violet-700 border-violet-200',
+    'bg-pink-100 text-pink-700 border-pink-200',
+    'bg-cyan-100 text-cyan-700 border-cyan-200',
+    'bg-orange-100 text-orange-700 border-orange-200',
+    'bg-teal-100 text-teal-700 border-teal-200',
+    'bg-indigo-100 text-indigo-700 border-indigo-200',
+    'bg-rose-100 text-rose-700 border-rose-200',
+];
+function getCustomerColor(name, allCustomers) {
+    const idx = allCustomers.sort().indexOf(name);
+    return CUSTOMER_COLORS[idx % CUSTOMER_COLORS.length];
+}
 
-            useEffect(() => {
-                initializeUser();
-                loadLocalData();
-                checkNotificationPermission();
-                
-                const checkFirebase = setInterval(() => {
-                    if (window.firebaseReady && userId) {
-                        clearInterval(checkFirebase);
-                        syncWithFirebase();
+// ── Main App ───────────────────────────────────────────────────────────────
+const TaskManager = () => {
+    const [tasks, setTasks] = useState([]);
+    const [messages, setMessages] = useState([]);
+    const [context, setContext] = useState([]);
+    const [inputMessage, setInputMessage] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [fbLoading, setFbLoading] = useState(true);
+    const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+    const [showSettings, setShowSettings] = useState(false);
+    const [showContext, setShowContext] = useState(false);
+    const [showAddTask, setShowAddTask] = useState(false);
+    const [editingTask, setEditingTask] = useState(null);
+    const [apiKey, setApiKey] = useState('');
+    const [tempApiKey, setTempApiKey] = useState('');
+    const [userEmail, setUserEmail] = useState('');
+    const [tempEmail, setTempEmail] = useState('');
+    const [emailStatus, setEmailStatus] = useState('');
+    const [syncStatus, setSyncStatus] = useState('Loading...');
+
+    // Filter/sort/search state
+    const [searchQuery, setSearchQuery] = useState('');
+    const [filterCustomer, setFilterCustomer] = useState('all');
+    const [filterStatus, setFilterStatus] = useState('pending');
+    const [sortBy, setSortBy] = useState('customer'); // customer | priority | dueDate | created
+    const [groupByCustomer, setGroupByCustomer] = useState(true);
+    const [collapsedGroups, setCollapsedGroups] = useState({});
+
+    const messagesEndRef = useRef(null);
+    const lastNotifDay = useRef({});
+
+    // ── Load data ──────────────────────────────────────────────────────────
+    useEffect(() => {
+        async function load() {
+            setFbLoading(true);
+            if (window.firebaseReady) {
+                const data = await fbLoadAll();
+                if (data) {
+                    if (data.tasks) setTasks(data.tasks);
+                    if (data.messages && data.messages.length) setMessages(data.messages);
+                    else setMessages([welcome()]);
+                    if (data.context) setContext(data.context);
+                    if (data.settings) {
+                        if (data.settings.apiKey) setApiKey(data.settings.apiKey);
+                        if (data.settings.email) setUserEmail(data.settings.email);
                     }
-                }, 100);
-
-                const notifInterval = setInterval(() => {
-                    checkReminders();
-                    checkScheduledNotifications();
-                }, 60000);
-
-                return () => {
-                    clearInterval(checkFirebase);
-                    clearInterval(notifInterval);
-                };
-            }, []);
-
-            useEffect(() => {
-                if (userId && window.firebaseReady) {
-                    syncWithFirebase();
+                    setSyncStatus('Synced ☁️');
+                } else {
+                    setMessages([welcome()]);
+                    setSyncStatus('Synced ☁️');
                 }
-            }, [userId]);
+            } else {
+                const s = localStorage;
+                if (s.getItem('ai-tasks')) setTasks(JSON.parse(s.getItem('ai-tasks')));
+                if (s.getItem('ai-messages')) setMessages(JSON.parse(s.getItem('ai-messages')));
+                else setMessages([welcome()]);
+                if (s.getItem('ai-context')) setContext(JSON.parse(s.getItem('ai-context')));
+                if (s.getItem('anthropic-api-key')) setApiKey(s.getItem('anthropic-api-key'));
+                if (s.getItem('user-email')) setUserEmail(s.getItem('user-email'));
+                setSyncStatus('Local only');
+            }
+            setFbLoading(false);
+            checkNotifPermission();
+        }
+        if (window.firebaseReady) load();
+        else window.addEventListener('firebaseReady', load, { once: true });
+        setTimeout(() => { if (fbLoading) load(); }, 3000);
+    }, []);
 
-            const initializeUser = () => {
-                let uid = localStorage.getItem('user-id');
-                if (!uid) {
-                    uid = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-                    localStorage.setItem('user-id', uid);
+    function welcome() {
+        return { role: 'assistant', content: "Hi! I'm your AI assistant. Tell me what you need to do, ask about your tasks, or share context about your projects and customers.", timestamp: new Date().toISOString() };
+    }
+
+    // ── Notifications ──────────────────────────────────────────────────────
+    useEffect(() => {
+        const iv = setInterval(() => { checkScheduled(); checkTaskDue(); }, 60000);
+        return () => clearInterval(iv);
+    }, [tasks, notificationsEnabled]);
+
+    function checkNotifPermission() {
+        if ('Notification' in window) setNotificationsEnabled(Notification.permission === 'granted');
+    }
+    async function enableNotifications() {
+        if ('Notification' in window) {
+            const p = await Notification.requestPermission();
+            setNotificationsEnabled(p === 'granted');
+        }
+    }
+    function checkScheduled() {
+        if (!notificationsEnabled) return;
+        const now = new Date();
+        const day = now.getDay();
+        if (day === 5 || day === 6) return;
+        const h = now.getHours(), m = now.getMinutes();
+        const pending = tasks.filter(t => !t.completed);
+        const slots = [{ h:10,m:0,label:'☀️ Morning Check-in' },{ h:14,m:0,label:'⏰ Afternoon Reminder' },{ h:17,m:30,label:'🌙 Evening Wrap-up' }];
+        slots.forEach(s => {
+            const key = now.toDateString()+s.h+s.m;
+            if (h===s.h && m===s.m && !lastNotifDay.current[key]) {
+                lastNotifDay.current[key] = true;
+                new Notification(s.label, { body: `${pending.length} pending tasks. Click to open.` });
+            }
+        });
+    }
+    function checkTaskDue() {
+        if (!notificationsEnabled) return;
+        const now = new Date();
+        tasks.forEach(t => {
+            if (t.dueDate && !t.completed) {
+                const diff = new Date(t.dueDate) - now;
+                const key = 'due-'+t.id;
+                if (diff > 0 && diff < 3600000 && !lastNotifDay.current[key]) {
+                    lastNotifDay.current[key] = true;
+                    new Notification('⏰ Due Soon', { body: `"${t.title}" is due in less than 1 hour!` });
                 }
-                setUserId(uid);
-            };
+            }
+        });
+    }
 
-            const loadLocalData = () => {
-                try {
-                    const storedApiKey = localStorage.getItem('anthropic-api-key');
-                    const storedEmail = localStorage.getItem('user-email');
-                    if (storedApiKey) setApiKey(storedApiKey);
-                    if (storedEmail) setUserEmail(storedEmail);
-                } catch (error) {
-                    console.log('Error loading local data');
-                }
-            };
+    // ── Task CRUD ──────────────────────────────────────────────────────────
+    function saveTasks(updated) {
+        setTasks(updated);
+        fbSave('tasks', updated);
+        localStorage.setItem('ai-tasks', JSON.stringify(updated));
+    }
+    function addTask(taskData) {
+        const t = {
+            id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+            title: taskData.title || 'Untitled',
+            priority: taskData.priority || 'medium',
+            dueDate: taskData.dueDate || null,
+            customer: taskData.customer || null,
+            category: taskData.category || null,
+            notes: taskData.notes || null,
+            completed: false,
+            createdAt: new Date().toISOString()
+        };
+        saveTasks([...tasks, t]);
+        return t;
+    }
+    function updateTask(id, changes) {
+        saveTasks(tasks.map(t => t.id === id ? { ...t, ...changes } : t));
+    }
+    function toggleTask(id) {
+        saveTasks(tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+    }
+    function deleteTask(id) {
+        saveTasks(tasks.filter(t => t.id !== id));
+    }
 
-            const syncWithFirebase = () => {
-                if (!window.firebaseDb || !userId || !window.firebaseReady) return;
+    // ── Derived data ───────────────────────────────────────────────────────
+    const allCustomers = useMemo(() => {
+        const names = tasks.map(t => t.customer).filter(Boolean);
+        return [...new Set(names)].sort();
+    }, [tasks]);
 
-                try {
-                    const tasksRef = window.firebaseCollection(window.firebaseDb, `users/${userId}/tasks`);
-                    window.firebaseOnSnapshot(tasksRef, (snapshot) => {
-                        const tasksList = [];
-                        snapshot.forEach((doc) => {
-                            tasksList.push({ id: doc.id, ...doc.data() });
-                        });
-                        setTasks(tasksList);
-                        setCloudSynced(true);
-                    });
+    const filteredTasks = useMemo(() => {
+        let result = [...tasks];
+        // Status filter
+        if (filterStatus === 'pending') result = result.filter(t => !t.completed);
+        else if (filterStatus === 'completed') result = result.filter(t => t.completed);
+        // Customer filter
+        if (filterCustomer !== 'all') {
+            if (filterCustomer === 'none') result = result.filter(t => !t.customer);
+            else result = result.filter(t => t.customer === filterCustomer);
+        }
+        // Search
+        if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase();
+            result = result.filter(t =>
+                t.title.toLowerCase().includes(q) ||
+                (t.customer && t.customer.toLowerCase().includes(q)) ||
+                (t.notes && t.notes.toLowerCase().includes(q)) ||
+                (t.category && t.category.toLowerCase().includes(q))
+            );
+        }
+        // Sort
+        result.sort((a, b) => {
+            if (sortBy === 'priority') return PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+            if (sortBy === 'dueDate') {
+                if (!a.dueDate && !b.dueDate) return 0;
+                if (!a.dueDate) return 1;
+                if (!b.dueDate) return -1;
+                return new Date(a.dueDate) - new Date(b.dueDate);
+            }
+            if (sortBy === 'customer') {
+                const ca = a.customer || 'zzz', cb = b.customer || 'zzz';
+                if (ca !== cb) return ca.localeCompare(cb);
+                return PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+            }
+            return new Date(b.createdAt) - new Date(a.createdAt);
+        });
+        return result;
+    }, [tasks, filterStatus, filterCustomer, searchQuery, sortBy]);
 
-                    const contextRef = window.firebaseCollection(window.firebaseDb, `users/${userId}/context`);
-                    window.firebaseOnSnapshot(contextRef, (snapshot) => {
-                        const contextList = [];
-                        snapshot.forEach((doc) => {
-                            contextList.push({ id: doc.id, ...doc.data() });
-                        });
-                        setContextNotes(contextList);
-                    });
+    const groupedTasks = useMemo(() => {
+        if (!groupByCustomer) return { 'All Tasks': filteredTasks };
+        const groups = {};
+        filteredTasks.forEach(t => {
+            const key = t.customer || '— No Customer';
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(t);
+        });
+        return groups;
+    }, [filteredTasks, groupByCustomer]);
 
-                    const messagesRef = window.firebaseCollection(window.firebaseDb, `users/${userId}/messages`);
-                    const messagesQuery = window.firebaseQuery(messagesRef, window.firebaseOrderBy('timestamp', 'asc'));
-                    window.firebaseOnSnapshot(messagesQuery, (snapshot) => {
-                        const messagesList = [];
-                        snapshot.forEach((doc) => {
-                            messagesList.push({ id: doc.id, ...doc.data() });
-                        });
-                        
-                        if (messagesList.length === 0) {
-                            const welcomeMsg = {
-                                id: 'welcome',
-                                role: 'assistant',
-                                content: "Hi! I'm your AI personal assistant with cloud sync! 🌐\n\n✅ Your data syncs across all devices\n✅ Email reminders at 10 AM, 2 PM, 5:30 PM\n✅ Full context memory\n\nTry: 'What's on my plate?'",
-                                timestamp: new Date().toISOString()
-                            };
-                            setMessages([welcomeMsg]);
-                            saveMessageToCloud(welcomeMsg);
-                        } else {
-                            setMessages(messagesList);
-                        }
-                    });
+    // ── AI Chat ────────────────────────────────────────────────────────────
+    async function sendMessage() {
+        if (!inputMessage.trim() || isLoading) return;
+        if (!apiKey) { setShowSettings(true); return; }
 
-                } catch (error) {
-                    console.error('Firebase sync error:', error);
-                }
-            };
+        const userMsg = { role: 'user', content: inputMessage, timestamp: new Date().toISOString() };
+        const newMessages = [...messages, userMsg];
+        setMessages(newMessages);
+        setInputMessage('');
+        setIsLoading(true);
 
-            const saveTaskToCloud = async (task) => {
-                if (!window.firebaseDb || !userId || !window.firebaseReady) return;
-                try {
-                    const docRef = window.firebaseDoc(window.firebaseDb, `users/${userId}/tasks`, task.id);
-                    await window.firebaseSetDoc(docRef, task);
-                } catch (error) {
-                    console.error('Error saving task:', error);
-                }
-            };
+        try {
+            const taskList = tasks.map(t =>
+                `[${t.id}] ${t.title} | Priority: ${t.priority} | Customer: ${t.customer||'none'} | Status: ${t.completed?'DONE':'PENDING'}${t.dueDate?' | Due: '+t.dueDate:''}${t.notes?' | Notes: '+t.notes:''}`
+            ).join('\n') || 'No tasks yet.';
 
-            const deleteTaskFromCloud = async (taskId) => {
-                if (!window.firebaseDb || !userId || !window.firebaseReady) return;
-                try {
-                    const docRef = window.firebaseDoc(window.firebaseDb, `users/${userId}/tasks`, taskId);
-                    await window.firebaseDeleteDoc(docRef);
-                } catch (error) {
-                    console.error('Error deleting task:', error);
-                }
-            };
+            const contextList = context.length > 0 ? context.slice(-20).map(c=>'- '+c).join('\n') : 'None.';
+            const customerList = allCustomers.length > 0 ? allCustomers.join(', ') : 'None yet.';
 
-            const saveContextToCloud = async (note) => {
-                if (!window.firebaseDb || !userId || !window.firebaseReady) return;
-                try {
-                    const docRef = window.firebaseDoc(window.firebaseDb, `users/${userId}/context`, note.id);
-                    await window.firebaseSetDoc(docRef, note);
-                } catch (error) {
-                    console.error('Error saving context:', error);
-                }
-            };
-
-            const deleteContextFromCloud = async (noteId) => {
-                if (!window.firebaseDb || !userId || !window.firebaseReady) return;
-                try {
-                    const docRef = window.firebaseDoc(window.firebaseDb, `users/${userId}/context`, noteId);
-                    await window.firebaseDeleteDoc(docRef);
-                } catch (error) {
-                    console.error('Error deleting context:', error);
-                }
-            };
-
-            const saveMessageToCloud = async (message) => {
-                if (!window.firebaseDb || !userId || !window.firebaseReady) return;
-                try {
-                    const docRef = window.firebaseDoc(window.firebaseDb, `users/${userId}/messages`, message.id || Date.now().toString());
-                    await window.firebaseSetDoc(docRef, message);
-                } catch (error) {
-                    console.error('Error saving message:', error);
-                }
-            };
-
-            const saveApiKey = (key) => {
-                localStorage.setItem('anthropic-api-key', key);
-                setApiKey(key);
-            };
-
-            const saveEmail = (email) => {
-                localStorage.setItem('user-email', email);
-                setUserEmail(email);
-            };
-
-            const checkNotificationPermission = () => {
-                if ('Notification' in window) {
-                    setNotificationsEnabled(Notification.permission === 'granted');
-                }
-            };
-
-            const requestNotificationPermission = async () => {
-                if ('Notification' in window) {
-                    const permission = await Notification.requestPermission();
-                    setNotificationsEnabled(permission === 'granted');
-                    if (permission === 'granted') {
-                        showNotification('Notifications Enabled!', 'Daily reminders at 10 AM, 2 PM, 5:30 PM');
-                    }
-                }
-            };
-
-            const checkScheduledNotifications = () => {
-                if (!notificationsEnabled) return;
-
-                const now = new Date();
-                const day = now.getDay();
-                if (day === 5 || day === 6) return;
-
-                const currentHour = now.getHours();
-                const currentMinute = now.getMinutes();
-
-                notificationTimes.forEach(time => {
-                    if (currentHour === time.hour && currentMinute === time.minute) {
-                        const lastNotifKey = `last-notif-${time.hour}-${time.minute}`;
-                        const lastNotif = localStorage.getItem(lastNotifKey);
-                        const today = now.toDateString();
-
-                        if (lastNotif !== today) {
-                            sendScheduledNotification(time.label);
-                            sendEmailReminder(time.label);
-                            localStorage.setItem(lastNotifKey, today);
-                        }
-                    }
-                });
-            };
-
-            const sendEmailReminder = async (label) => {
-                if (!userEmail) return;
-
-                const pendingTasks = tasks.filter(t => !t.completed);
-                const highPriority = pendingTasks.filter(t => t.priority === 'high');
-                
-                try {
-                    await fetch('/api/send-email', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            to: userEmail,
-                            subject: `${label} - Task Manager`,
-                            tasks: pendingTasks,
-                            highPriority: highPriority.length,
-                            label: label
-                        })
-                    });
-                } catch (error) {
-                    console.log('Email send skipped:', error);
-                }
-            };
-
-            const sendTestEmail = async () => {
-                if (!userEmail) {
-                    alert('Please add your email in Settings first!');
-                    setShowSettingsModal(true);
-                    return;
-                }
-
-                try {
-                    const pendingTasks = tasks.filter(t => !t.completed);
-                    const highPriority = pendingTasks.filter(t => t.priority === 'high');
-                    
-                    const response = await fetch('/api/send-email', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            to: userEmail,
-                            subject: 'Test Email - Task Manager',
-                            tasks: pendingTasks.length > 0 ? pendingTasks : [{ title: 'Sample task', priority: 'medium' }],
-                            highPriority: highPriority.length,
-                            label: 'Test Email'
-                        })
-                    });
-
-                    const data = await response.json();
-                    
-                    if (data.success) {
-                        alert(`✅ Test email sent to ${userEmail}! Check your inbox (and spam folder).`);
-                    } else {
-                        alert(`❌ Error: ${data.error || 'Failed to send email'}`);
-                        console.error('Email error:', data);
-                    }
-                } catch (error) {
-                    alert(`❌ Error sending email: ${error.message}`);
-                    console.error('Email send error:', error);
-                }
-            };
-
-            const sendScheduledNotification = (label) => {
-                const pendingTasks = tasks.filter(t => !t.completed);
-                const highPriority = pendingTasks.filter(t => t.priority === 'high').length;
-                
-                let message = '';
-                if (label === 'Morning Check-in') {
-                    message = `Good morning! ${pendingTasks.length} task${pendingTasks.length !== 1 ? 's' : ''}.${highPriority > 0 ? ` ${highPriority} high priority.` : ''}`;
-                } else if (label === 'Afternoon Reminder') {
-                    message = `Afternoon: ${pendingTasks.length} task${pendingTasks.length !== 1 ? 's' : ''} pending.`;
-                } else if (label === 'Evening Wrap-up') {
-                    message = `End of day: ${pendingTasks.length} pending.`;
-                }
-
-                showNotification(label, message);
-            };
-
-            const checkReminders = () => {
-                const now = new Date();
-                tasks.forEach(task => {
-                    if (task.reminder && !task.completed && notificationsEnabled) {
-                        const reminderTime = new Date(task.reminder);
-                        const diff = reminderTime - now;
-                        if (diff > 0 && diff < 60000) {
-                            showNotification('Task Reminder', task.title);
-                        }
-                    }
-                });
-            };
-
-            const showNotification = (title, body) => {
-                if (!notificationsEnabled || !('Notification' in window)) return;
-                new Notification(title, { body: body });
-            };
-
-            const sendTestNotification = () => {
-                if (!notificationsEnabled) {
-                    alert('Please enable notifications first!');
-                    return;
-                }
-                if (!('Notification' in window)) {
-                    alert('Your browser does not support notifications');
-                    return;
-                }
-                try {
-                    const pendingTasks = tasks.filter(t => !t.completed);
-                    new Notification('🔔 Test Notification', {
-                        body: `You have ${pendingTasks.length} pending task${pendingTasks.length !== 1 ? 's' : ''}. Notifications are working!`,
-                        requireInteraction: false
-                    });
-                    console.log('Test notification sent successfully');
-                } catch (error) {
-                    console.error('Notification error:', error);
-                    alert('Error sending notification: ' + error.message);
-                }
-            };
-
-            const addTask = (taskData) => {
-                const newTask = {
-                    id: Date.now().toString(),
-                    title: taskData.title,
-                    priority: taskData.priority || 'medium',
-                    dueDate: taskData.dueDate || null,
-                    category: taskData.category || 'General',
-                    completed: false,
-                    createdAt: new Date().toISOString()
-                };
-                saveTaskToCloud(newTask);
-            };
-
-            const addContextNote = (note) => {
-                const newNote = {
-                    id: Date.now().toString(),
-                    content: note,
-                    timestamp: new Date().toISOString()
-                };
-                saveContextToCloud(newNote);
-            };
-
-            const deleteContextNote = (id) => {
-                deleteContextFromCloud(id);
-            };
-
-            const toggleTask = (id) => {
-                const task = tasks.find(t => t.id === id);
-                if (task) {
-                    const updatedTask = { ...task, completed: !task.completed };
-                    saveTaskToCloud(updatedTask);
-                }
-            };
-
-            const deleteTask = (id) => {
-                deleteTaskFromCloud(id);
-            };
-
-            const sendMessage = async () => {
-                if (!inputMessage.trim() || isLoading) return;
-                if (!apiKey) {
-                    setShowSettingsModal(true);
-                    return;
-                }
-
-                const userMessage = {
-                    id: Date.now().toString(),
-                    role: 'user',
-                    content: inputMessage,
-                    timestamp: new Date().toISOString()
-                };
-
-                saveMessageToCloud(userMessage);
-                setInputMessage('');
-                setIsLoading(true);
-
-                try {
-                    const taskContext = tasks.map(t => 
-                        `- ${t.title} (${t.priority}, ${t.completed ? 'done' : 'pending'}${t.dueDate ? ', due: ' + new Date(t.dueDate).toLocaleDateString() : ''})`
-                    ).join('\n');
-
-                    const contextInfo = contextNotes.map(n => `- ${n.content}`).join('\n');
-
-                    const systemPrompt = `You are a personal AI assistant with full context memory.
+            const systemPrompt = `You are a personal AI assistant and task manager. You have full memory of the user's tasks, customers, and context.
 
 CURRENT TASKS:
-${taskContext || 'None'}
+${taskList}
 
-CONTEXT:
-${contextInfo || 'None'}
+KNOWN CUSTOMERS: ${customerList}
 
-Respond with JSON: {"response":"message","tasks":[{"title":"","priority":"high|medium|low","dueDate":"YYYY-MM-DD","category":""}],"context_notes":["note"]}`;
+STORED CONTEXT:
+${contextList}
 
-                    const response = await fetch('/api/chat', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            apiKey: apiKey,
-                            system: systemPrompt,
-                            messages: messages.slice(-20).map(m => ({ role: m.role, content: m.content })).concat([{ role: 'user', content: inputMessage }])
-                        })
-                    });
+TODAY: ${new Date().toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}
 
-                    const data = await response.json();
-                    if (data.error) throw new Error(data.error);
+RESPONSE FORMAT RULES:
 
-                    const aiResponse = data.content[0].text;
-                    let parsedResponse;
-                    try {
-                        parsedResponse = JSON.parse(aiResponse.replace(/```json\n?|\n?```/g, '').trim());
-                    } catch {
-                        parsedResponse = { response: aiResponse };
-                    }
+1. If user asks to SEE/LIST tasks → return { "response": "summary of tasks" }
+   DO NOT include new_tasks when just listing.
 
-                    if (parsedResponse.tasks) {
-                        parsedResponse.tasks.forEach(t => addTask(t));
-                    }
-                    if (parsedResponse.context_notes) {
-                        parsedResponse.context_notes.forEach(note => addContextNote(note));
-                    }
+2. If user asks to CREATE new tasks → return:
+   { "response": "confirmation", "new_tasks": [{ "title":"...", "priority":"high|medium|low", "dueDate":"YYYY-MM-DD", "customer":"Customer Name", "category":"...", "notes":"..." }] }
+   Only put BRAND NEW tasks in new_tasks. NEVER existing tasks.
 
-                    const assistantMessage = {
-                        id: (Date.now() + 1).toString(),
-                        role: 'assistant',
-                        content: parsedResponse.response,
-                        timestamp: new Date().toISOString()
-                    };
-                    saveMessageToCloud(assistantMessage);
+3. If user shares context/info → return:
+   { "response": "acknowledgment", "context": ["key fact"] }
 
-                } catch (error) {
-                    const errorMessage = {
-                        id: (Date.now() + 1).toString(),
-                        role: 'assistant',
-                        content: "Error: " + error.message,
-                        timestamp: new Date().toISOString()
-                    };
-                    saveMessageToCloud(errorMessage);
-                }
-                setIsLoading(false);
-            };
+4. General questions → { "response": "answer" }
 
-            useEffect(() => {
-                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-            }, [messages]);
+IMPORTANT: Always extract customer names from user messages when creating tasks. If the user says "for Acme" or "Acme project", set customer to "Acme".`;
 
-            const priorityColors = {
-                high: 'bg-red-100 text-red-800 border-red-300',
-                medium: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-                low: 'bg-green-100 text-green-800 border-green-300'
-            };
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    apiKey,
+                    system: systemPrompt,
+                    messages: newMessages.slice(-15).map(m => ({ role: m.role, content: m.content }))
+                })
+            });
 
-            const pendingTasks = tasks.filter(t => !t.completed);
-            const completedTasks = tasks.filter(t => t.completed);
-            const highPriorityTasks = pendingTasks.filter(t => t.priority === 'high');
+            const data = await response.json();
+            if (data.error) throw new Error(data.error.message || data.error);
 
-            return (
-                <>
-                    <div className="flex h-screen bg-gray-50">
-                        <div className="w-2/5 bg-white border-r border-gray-200 flex flex-col">
-                            <div className="p-6 border-b border-gray-200">
-                                <div className="flex items-center justify-between mb-4">
-                                    <div>
-                                        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                                            <CheckCircle2 size={24} className="text-blue-600" />
-                                            My Tasks
-                                        </h1>
-                                        <p className="text-sm text-gray-600 mt-1">
-                                            {pendingTasks.length} pending · {completedTasks.length} completed
-                                        </p>
-                                        {cloudSynced && (
-                                            <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                                                <Cloud size={12} /> Synced
-                                            </p>
-                                        )}
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => setShowContextModal(true)} className="p-2 hover:bg-gray-100 rounded-lg">
-                                            <Brain size={20} className="text-purple-600" />
-                                        </button>
-                                        <button onClick={() => setShowSettingsModal(true)} className="p-2 hover:bg-gray-100 rounded-lg">
-                                            <Settings size={20} className="text-gray-600" />
-                                        </button>
-                                    </div>
-                                </div>
+            const aiText = data.content[0].text;
+            let parsed;
+            try { parsed = JSON.parse(aiText.replace(/```json\n?|\n?```/g,'').trim()); }
+            catch { parsed = { response: aiText }; }
 
-                                {highPriorityTasks.length > 0 && (
-                                    <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                                        <p className="text-sm font-semibold text-red-800">🔥 {highPriorityTasks.length} High Priority</p>
-                                    </div>
-                                )}
+            if (parsed.new_tasks && Array.isArray(parsed.new_tasks)) {
+                parsed.new_tasks.forEach(t => addTask(t));
+            }
+            if (parsed.context && Array.isArray(parsed.context)) {
+                const updated = [...context, ...parsed.context];
+                setContext(updated);
+                fbSave('context', updated);
+                localStorage.setItem('ai-context', JSON.stringify(updated));
+            }
+
+            const assistantMsg = { role: 'assistant', content: parsed.response || aiText, timestamp: new Date().toISOString() };
+            const updatedMsgs = [...newMessages, assistantMsg];
+            setMessages(updatedMsgs);
+            fbSave('messages', updatedMsgs);
+            localStorage.setItem('ai-messages', JSON.stringify(updatedMsgs));
+
+        } catch(e) {
+            const errMsg = { role:'assistant', content:'⚠️ '+(e.message.includes('api_key')?'Invalid API key.':e.message), timestamp:new Date().toISOString() };
+            const updatedMsgs = [...newMessages, errMsg];
+            setMessages(updatedMsgs);
+            fbSave('messages', updatedMsgs);
+        }
+        setIsLoading(false);
+    }
+
+    useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior:'smooth' }); }, [messages]);
+
+    function saveSettings() {
+        const key = tempApiKey.trim() || apiKey;
+        const email = tempEmail.trim() || userEmail;
+        setApiKey(key); setUserEmail(email);
+        fbSave('settings', { apiKey: key, email });
+        localStorage.setItem('anthropic-api-key', key);
+        localStorage.setItem('user-email', email);
+        setShowSettings(false); setTempApiKey(''); setTempEmail(''); setEmailStatus('');
+    }
+
+    async function sendTestEmail() {
+        if (!userEmail) { alert('Add your email in Settings first.'); return; }
+        setEmailStatus('Sending...');
+        try {
+            const pending = tasks.filter(t => !t.completed);
+            const r = await fetch('/api/send-email', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ to:userEmail, subject:'🧪 Test - Task Manager', tasks:pending, highPriority:pending.filter(t=>t.priority==='high').length, label:'Test Email' })
+            });
+            const d = await r.json();
+            setEmailStatus(d.success ? '✅ Email sent!' : '❌ '+d.error);
+        } catch(e) { setEmailStatus('❌ '+e.message); }
+    }
+
+    const pendingCount = tasks.filter(t => !t.completed).length;
+    const highCount = tasks.filter(t => !t.completed && t.priority==='high').length;
+
+    // ── Task Card ──────────────────────────────────────────────────────────
+    const TaskCard = ({ task }) => {
+        const pc = PRIORITY_COLORS[task.priority] || PRIORITY_COLORS.medium;
+        const customerColor = task.customer ? getCustomerColor(task.customer, allCustomers) : '';
+        return (
+            <div className={`mb-2 p-3 rounded-xl border ${pc.card} group`}>
+                <div className="flex items-start gap-2">
+                    <button onClick={() => toggleTask(task.id)} className="mt-0.5 shrink-0 text-gray-400 hover:text-green-500 transition-colors">
+                        {task.completed ? <CheckCircle size={18} className="text-green-500"/> : <Circle size={18}/>}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-medium leading-snug ${task.completed ? 'line-through text-gray-400' : 'text-gray-800'}`}>{task.title}</p>
+                        <div className="flex flex-wrap gap-1.5 mt-1.5 items-center">
+                            <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${pc.badge}`}>{task.priority}</span>
+                            {task.customer && (
+                                <span className={`text-xs px-1.5 py-0.5 rounded-full border font-medium ${customerColor}`}>
+                                    {task.customer}
+                                </span>
+                            )}
+                            {task.dueDate && <span className="text-xs text-gray-500">📅 {new Date(task.dueDate+'T00:00:00').toLocaleDateString()}</span>}
+                            {task.notes && <span className="text-xs text-gray-400 truncate max-w-32" title={task.notes}>💬 {task.notes}</span>}
+                        </div>
+                    </div>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                        <button onClick={() => setEditingTask(task)} className="text-gray-300 hover:text-blue-500 transition-colors p-0.5">
+                            <Edit size={13}/>
+                        </button>
+                        <button onClick={() => deleteTask(task.id)} className="text-gray-300 hover:text-red-500 transition-colors p-0.5">
+                            <Trash size={13}/>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    // ── Task Form (Add/Edit) ───────────────────────────────────────────────
+    const TaskForm = ({ task, onClose }) => {
+        const [form, setForm] = useState({
+            title: task?.title || '',
+            priority: task?.priority || 'medium',
+            dueDate: task?.dueDate || '',
+            customer: task?.customer || '',
+            category: task?.category || '',
+            notes: task?.notes || '',
+        });
+        function save() {
+            if (!form.title.trim()) return;
+            if (task) updateTask(task.id, { ...form, customer: form.customer||null, dueDate: form.dueDate||null });
+            else addTask(form);
+            onClose();
+        }
+        return (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
+                    <h3 className="text-base font-bold mb-4">{task ? 'Edit Task' : '+ New Task'}</h3>
+                    <div className="space-y-3">
+                        <div>
+                            <label className="text-xs font-medium text-gray-600 mb-1 block">Task Title *</label>
+                            <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="What needs to be done?" autoFocus/>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="text-xs font-medium text-gray-600 mb-1 block">Customer</label>
+                                <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" value={form.customer} onChange={e=>setForm({...form,customer:e.target.value})} placeholder="e.g. Acme Corp" list="customer-list"/>
+                                <datalist id="customer-list">{allCustomers.map(c=><option key={c} value={c}/>)}</datalist>
                             </div>
-
-                            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                                {pendingTasks.length === 0 && completedTasks.length === 0 && (
-                                    <div className="text-center py-12 text-gray-400">
-                                        <Circle size={48} />
-                                        <p className="mt-3">No tasks yet!</p>
-                                    </div>
-                                )}
-
-                                {pendingTasks.length > 0 && (
-                                    <div>
-                                        <h3 className="text-xs font-semibold text-gray-500 uppercase mb-3">Pending</h3>
-                                        {pendingTasks.map(task => (
-                                            <div key={task.id} className={`mb-3 p-4 rounded-lg border-2 ${priorityColors[task.priority]}`}>
-                                                <div className="flex items-start gap-3">
-                                                    <button onClick={() => toggleTask(task.id)} className="mt-1">
-                                                        <Circle size={20} />
-                                                    </button>
-                                                    <div className="flex-1">
-                                                        <p className="font-medium">{task.title}</p>
-                                                        <div className="flex gap-3 mt-2 text-xs">
-                                                            {task.category && <span className="opacity-75">📁 {task.category}</span>}
-                                                            {task.dueDate && <span className="opacity-75">📅 {new Date(task.dueDate).toLocaleDateString()}</span>}
-                                                        </div>
-                                                    </div>
-                                                    <button onClick={() => deleteTask(task.id)} className="text-red-600 hover:text-red-800">
-                                                        <Trash2 size={18} />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-
-                                {completedTasks.length > 0 && (
-                                    <div>
-                                        <h3 className="text-xs font-semibold text-gray-500 uppercase mb-3">Completed</h3>
-                                        {completedTasks.map(task => (
-                                            <div key={task.id} className="mb-3 p-4 rounded-lg border-2 border-gray-200 bg-gray-50">
-                                                <div className="flex items-start gap-3">
-                                                    <button onClick={() => toggleTask(task.id)} className="mt-1">
-                                                        <CheckCircle2 size={20} className="text-green-600" />
-                                                    </button>
-                                                    <div className="flex-1">
-                                                        <p className="font-medium line-through text-gray-500">{task.title}</p>
-                                                    </div>
-                                                    <button onClick={() => deleteTask(task.id)} className="text-red-600 hover:text-red-800">
-                                                        <Trash2 size={18} />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="p-4 bg-blue-50 border-t border-blue-200">
-                                {!notificationsEnabled ? (
-                                    <>
-                                        <p className="text-xs text-blue-800 mb-2">Enable daily reminders</p>
-                                        <button onClick={requestNotificationPermission} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                                            <Bell size={18} />
-                                            Enable Notifications
-                                        </button>
-                                    </>
-                                ) : (
-                                    <>
-                                        <p className="text-xs text-green-800 mb-2">✓ Notifications enabled</p>
-                                        <button onClick={sendTestNotification} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
-                                            <Bell size={18} />
-                                            Test Notification
-                                        </button>
-                                    </>
-                                )}
+                            <div>
+                                <label className="text-xs font-medium text-gray-600 mb-1 block">Priority</label>
+                                <select className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})}>
+                                    <option value="high">🔴 High</option>
+                                    <option value="medium">🟡 Medium</option>
+                                    <option value="low">🟢 Low</option>
+                                </select>
                             </div>
                         </div>
-
-                        <div className="flex-1 flex flex-col bg-gradient-to-br from-blue-50 to-purple-50">
-                            <div className="p-6 bg-white border-b border-gray-200">
-                                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                                    <Sparkles size={24} className="text-purple-600" />
-                                    AI Assistant
-                                </h2>
-                                <p className="text-sm text-gray-600 mt-1">
-                                    {apiKey ? 'Cloud sync • Email reminders' : 'Add API key to enable'}
-                                </p>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="text-xs font-medium text-gray-600 mb-1 block">Due Date</label>
+                                <input type="date" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" value={form.dueDate} onChange={e=>setForm({...form,dueDate:e.target.value})}/>
                             </div>
-
-                            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                                {messages.map((msg, idx) => (
-                                    <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                        <div className={`max-w-lg p-4 rounded-lg ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-800'}`}>
-                                            <p className="whitespace-pre-wrap">{msg.content}</p>
-                                        </div>
-                                    </div>
-                                ))}
-                                {isLoading && (
-                                    <div className="flex justify-start">
-                                        <div className="bg-white border border-gray-200 p-4 rounded-lg">
-                                            <Loader2 size={24} className="animate-spin text-purple-600" />
-                                        </div>
-                                    </div>
-                                )}
-                                <div ref={messagesEndRef} />
+                            <div>
+                                <label className="text-xs font-medium text-gray-600 mb-1 block">Category</label>
+                                <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" value={form.category} onChange={e=>setForm({...form,category:e.target.value})} placeholder="e.g. Meeting"/>
                             </div>
+                        </div>
+                        <div>
+                            <label className="text-xs font-medium text-gray-600 mb-1 block">Notes</label>
+                            <textarea className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none" rows="2" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} placeholder="Any additional notes..."/>
+                        </div>
+                    </div>
+                    <div className="flex gap-2 mt-4">
+                        <button onClick={onClose} className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm hover:bg-gray-50">Cancel</button>
+                        <button onClick={save} className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700 font-medium">Save Task</button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
 
-                            <div className="p-6 bg-white border-t border-gray-200">
-                                <div className="flex gap-2 mb-3">
-                                    <button onClick={() => setInputMessage("What's on my plate?")} className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-full">
-                                        What's on my plate?
-                                    </button>
-                                </div>
-                                <div className="flex gap-3">
-                                    <input
-                                        type="text"
-                                        value={inputMessage}
-                                        onChange={(e) => setInputMessage(e.target.value)}
-                                        onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                                        placeholder={apiKey ? "Tell me about your projects..." : "Add API key..."}
-                                        className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                        disabled={isLoading}
-                                    />
-                                    <button onClick={sendMessage} disabled={isLoading || !inputMessage.trim()} className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50">
-                                        <Send size={18} />
-                                    </button>
-                                </div>
-                            </div>
+    // ── Render ─────────────────────────────────────────────────────────────
+    return (
+        <>
+        <div className="flex h-screen bg-gray-50 overflow-hidden">
+
+            {/* ── LEFT: Task Panel ── */}
+            <div className="w-5/12 bg-white border-r border-gray-100 flex flex-col min-w-0">
+
+                {/* Header */}
+                <div className="px-4 pt-4 pb-3 border-b border-gray-100">
+                    <div className="flex items-center justify-between mb-2">
+                        <div>
+                            <h1 className="text-base font-bold text-gray-900 flex items-center gap-1.5">
+                                <CheckCircle size={18} className="text-blue-500"/> My Tasks
+                            </h1>
+                            <p className="text-xs text-gray-400 mt-0.5">{syncStatus}</p>
+                        </div>
+                        <div className="flex gap-1">
+                            <button onClick={() => setShowAddTask(true)} className="px-2.5 py-1.5 bg-purple-600 text-white text-xs font-medium rounded-lg hover:bg-purple-700 transition-colors">+ Add</button>
+                            <button onClick={() => setShowContext(true)} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"><Brain size={16} className="text-purple-400"/></button>
+                            <button onClick={() => { setTempApiKey(''); setTempEmail(''); setEmailStatus(''); setShowSettings(true); }} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"><SettingsIcon size={16} className="text-gray-400"/></button>
                         </div>
                     </div>
 
-                    {showSettingsModal && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-                                <h3 className="text-xl font-bold mb-4">Settings</h3>
-                                <div className="space-y-4">
-                                    <div>
-                                        <label className="text-sm font-medium">Anthropic API Key</label>
-                                        <input type="password" value={tempApiKey} onChange={(e) => setTempApiKey(e.target.value)} placeholder="sk-ant-api03-..." className="w-full px-4 py-2 border rounded-lg mt-1" />
-                                        {apiKey && <p className="text-xs text-green-600 mt-1">✓ Configured</p>}
-                                    </div>
-                                    <div>
-                                        <label className="text-sm font-medium">Email (for reminders)</label>
-                                        <input type="email" value={tempEmail} onChange={(e) => setTempEmail(e.target.value)} placeholder="you@example.com" className="w-full px-4 py-2 border rounded-lg mt-1" />
-                                        {userEmail && <p className="text-xs text-green-600 mt-1">✓ {userEmail}</p>}
-                                    </div>
-                                    {userEmail && (
-                                        <button onClick={sendTestEmail} className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                                            Send Test Email Now
-                                        </button>
-                                    )}
-                                </div>
-                                <div className="flex gap-3 mt-6">
-                                    <button onClick={() => { setShowSettingsModal(false); setTempApiKey(''); setTempEmail(''); }} className="flex-1 px-4 py-2 border rounded-lg">Cancel</button>
-                                    <button onClick={() => { if (tempApiKey.trim()) saveApiKey(tempApiKey.trim()); if (tempEmail.trim()) saveEmail(tempEmail.trim()); setShowSettingsModal(false); setTempApiKey(''); setTempEmail(''); }} className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg">Save</button>
-                                </div>
-                            </div>
+                    {/* Stats row */}
+                    <div className="flex gap-2 mb-3">
+                        <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-medium">{pendingCount} pending</span>
+                        {highCount > 0 && <span className="text-xs bg-red-50 text-red-600 px-2 py-0.5 rounded-full font-medium">🔥 {highCount} high</span>}
+                        {allCustomers.length > 0 && <span className="text-xs bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full font-medium">{allCustomers.length} customers</span>}
+                    </div>
+
+                    {/* Search */}
+                    <div className="relative mb-2">
+                        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"/>
+                        <input
+                            className="w-full pl-7 pr-3 py-1.5 bg-gray-50 border border-gray-100 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-purple-300 focus:bg-white"
+                            placeholder="Search tasks, customers, notes..."
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                        />
+                        {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={12}/></button>}
+                    </div>
+
+                    {/* Filter/Sort row */}
+                    <div className="flex gap-1.5 flex-wrap">
+                        {/* Status filter */}
+                        <select className="text-xs px-2 py-1 border border-gray-100 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-purple-300 text-gray-600" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+                            <option value="all">All</option>
+                            <option value="pending">Pending</option>
+                            <option value="completed">Completed</option>
+                        </select>
+
+                        {/* Customer filter */}
+                        <select className="text-xs px-2 py-1 border border-gray-100 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-purple-300 text-gray-600 max-w-28" value={filterCustomer} onChange={e => setFilterCustomer(e.target.value)}>
+                            <option value="all">All customers</option>
+                            <option value="none">No customer</option>
+                            {allCustomers.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+
+                        {/* Sort */}
+                        <select className="text-xs px-2 py-1 border border-gray-100 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-purple-300 text-gray-600" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+                            <option value="customer">Sort: Customer</option>
+                            <option value="priority">Sort: Priority</option>
+                            <option value="dueDate">Sort: Due Date</option>
+                            <option value="created">Sort: Newest</option>
+                        </select>
+
+                        {/* Group toggle */}
+                        <button onClick={() => setGroupByCustomer(g => !g)} className={`text-xs px-2 py-1 rounded-lg border transition-colors ${groupByCustomer ? 'bg-purple-50 border-purple-200 text-purple-600' : 'bg-white border-gray-100 text-gray-500'}`}>
+                            <User size={11} className="inline mr-1"/>Group
+                        </button>
+                    </div>
+                </div>
+
+                {/* Task List */}
+                <div className="flex-1 overflow-y-auto p-3 scrollbar-thin">
+                    {fbLoading && (
+                        <div className="flex items-center justify-center py-12 text-gray-400 text-sm">
+                            <Loader size={18} className="animate-spin mr-2"/> Loading...
                         </div>
                     )}
 
-                    {showContextModal && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                            <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-96 overflow-y-auto">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h3 className="text-xl font-bold flex items-center gap-2">
-                                        <Brain className="text-purple-600" />
-                                        Context Memory
-                                    </h3>
-                                    <button onClick={() => setShowContextModal(false)} className="text-gray-500">✕</button>
-                                </div>
-                                {contextNotes.length === 0 ? (
-                                    <p className="text-gray-400 text-center py-8">No context yet</p>
-                                ) : (
-                                    <div className="space-y-2">
-                                        {contextNotes.map(note => (
-                                            <div key={note.id} className="p-3 bg-purple-50 border border-purple-200 rounded-lg flex justify-between">
-                                                <p className="text-sm flex-1">{note.content}</p>
-                                                <button onClick={() => deleteContextNote(note.id)} className="text-red-600 ml-2">
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
+                    {!fbLoading && filteredTasks.length === 0 && (
+                        <div className="text-center py-12 text-gray-400">
+                            <Circle size={36} className="mx-auto mb-2 opacity-30"/>
+                            <p className="text-sm">{searchQuery || filterCustomer !== 'all' ? 'No tasks match your filters.' : 'No tasks yet. Add one or ask the AI!'}</p>
+                        </div>
+                    )}
+
+                    {!fbLoading && Object.entries(groupedTasks).map(([group, groupTasks]) => (
+                        <div key={group} className="mb-3">
+                            {groupByCustomer && (
+                                <button
+                                    onClick={() => setCollapsedGroups(prev => ({ ...prev, [group]: !prev[group] }))}
+                                    className="flex items-center gap-1.5 w-full text-left mb-1.5 px-1 py-0.5 hover:bg-gray-50 rounded-lg group"
+                                >
+                                    {collapsedGroups[group] ? <ChevronRight size={12} className="text-gray-400"/> : <ChevronDown size={12} className="text-gray-400"/>}
+                                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${group === '— No Customer' ? 'bg-gray-100 text-gray-500 border-gray-200' : getCustomerColor(group, allCustomers)}`}>
+                                        {group === '— No Customer' ? group : <><User size={10} className="inline mr-1"/>{group}</>}
+                                    </span>
+                                    <span className="text-xs text-gray-400 ml-auto">{groupTasks.length}</span>
+                                </button>
+                            )}
+                            {!collapsedGroups[group] && groupTasks.map(task => <TaskCard key={task.id} task={task}/>)}
+                        </div>
+                    ))}
+                </div>
+
+                {/* Notification bar */}
+                <div className="px-3 pb-3">
+                    {!notificationsEnabled ? (
+                        <button onClick={enableNotifications} className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                            <Bell size={14}/> Enable Notifications
+                        </button>
+                    ) : (
+                        <div className="flex items-center gap-1.5 text-xs text-green-600 bg-green-50 rounded-lg px-3 py-2">
+                            <Bell size={13}/> <span>Notifications on</span>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* ── RIGHT: Chat Panel ── */}
+            <div className="flex-1 flex flex-col bg-gradient-to-br from-slate-50 to-purple-50/30 min-w-0">
+                <div className="px-5 py-4 bg-white border-b border-gray-100">
+                    <h2 className="text-base font-bold text-gray-900 flex items-center gap-1.5">
+                        <Sparkles size={18} className="text-purple-500"/> AI Personal Assistant
+                    </h2>
+                    <p className="text-xs text-gray-400 mt-0.5">{apiKey ? 'Ask about tasks, customers, or share context' : '⚙️ Add API key in Settings'}</p>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin">
+                    {messages.map((msg, i) => (
+                        <div key={i} className={`flex ${msg.role==='user'?'justify-end':'justify-start'}`}>
+                            <div className={`max-w-sm lg:max-w-md p-3 rounded-2xl text-sm leading-relaxed ${msg.role==='user'?'bg-blue-600 text-white rounded-br-sm':'bg-white border border-gray-100 text-gray-800 shadow-sm rounded-bl-sm'}`}>
+                                <p className="whitespace-pre-wrap">{msg.content}</p>
+                                <p className={`text-xs mt-1 ${msg.role==='user'?'text-blue-200':'text-gray-400'}`}>
+                                    {new Date(msg.timestamp).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
+                                </p>
+                            </div>
+                        </div>
+                    ))}
+                    {isLoading && (
+                        <div className="flex justify-start">
+                            <div className="bg-white border border-gray-100 p-3 rounded-2xl shadow-sm">
+                                <Loader size={18} className="animate-spin text-purple-500"/>
                             </div>
                         </div>
                     )}
-                </>
-            );
-        };
+                    <div ref={messagesEndRef}/>
+                </div>
 
-        ReactDOM.render(<AssistantApp />, document.getElementById('root'));
-    </script>
+                {/* Quick actions */}
+                <div className="px-4 pb-2 flex gap-1.5 flex-wrap">
+                    {["What's on my plate?", "Show high priority", "Tasks by customer", "What's due this week?"].map(q => (
+                        <button key={q} onClick={() => setInputMessage(q)} className="text-xs bg-white border border-gray-200 hover:border-purple-300 hover:text-purple-600 text-gray-500 px-2.5 py-1 rounded-full transition-colors">
+                            {q}
+                        </button>
+                    ))}
+                </div>
+
+                <div className="p-4 bg-white border-t border-gray-100">
+                    <div className="flex gap-2">
+                        <input
+                            type="text"
+                            value={inputMessage}
+                            onChange={e => setInputMessage(e.target.value)}
+                            onKeyDown={e => e.key==='Enter' && !e.shiftKey && sendMessage()}
+                            placeholder={apiKey ? "Tell me what you need, ask about your tasks..." : "Add API key in Settings..."}
+                            className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent"
+                            disabled={isLoading}
+                        />
+                        <button onClick={sendMessage} disabled={isLoading||!inputMessage.trim()} className="px-4 py-2.5 bg-purple-600 text-white rounded-xl hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                            <Send size={16}/>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {/* ── Modals ── */}
+        {(showAddTask || editingTask) && (
+            <TaskForm task={editingTask} onClose={() => { setShowAddTask(false); setEditingTask(null); }}/>
+        )}
+
+        {showSettings && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
+                    <h3 className="text-base font-bold mb-4">⚙️ Settings</h3>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Anthropic API Key</label>
+                    <input type="password" value={tempApiKey} onChange={e=>setTempApiKey(e.target.value)} placeholder={apiKey?'••••••••••••':'sk-ant-api03-...'} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm mb-1 focus:outline-none focus:ring-2 focus:ring-purple-400"/>
+                    {apiKey && <p className="text-xs text-green-600 mb-3">✓ API key configured</p>}
+                    <label className="block text-xs font-medium text-gray-600 mb-1 mt-3">Email for Reminders</label>
+                    <input type="email" value={tempEmail} onChange={e=>setTempEmail(e.target.value)} placeholder={userEmail||'your@email.com'} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm mb-1 focus:outline-none focus:ring-2 focus:ring-purple-400"/>
+                    {userEmail && <p className="text-xs text-green-600 mb-1">✓ {userEmail}</p>}
+                    <button onClick={sendTestEmail} className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 mt-1 mb-1"><Mail size={12}/> Send test email</button>
+                    {emailStatus && <p className="text-xs mb-2">{emailStatus}</p>}
+                    <p className="text-xs text-gray-400 mb-4">Reminders: 10 AM, 2 PM, 5:30 PM (Sun–Thu)</p>
+                    <div className="flex gap-2">
+                        <button onClick={()=>setShowSettings(false)} className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm hover:bg-gray-50">Cancel</button>
+                        <button onClick={saveSettings} className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700 font-medium">Save</button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {showContext && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl max-h-[80vh] flex flex-col">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-base font-bold flex items-center gap-2"><Brain size={18} className="text-purple-500"/> Context Memory</h3>
+                        <button onClick={()=>setShowContext(false)} className="text-gray-400 hover:text-gray-600"><X size={18}/></button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto scrollbar-thin">
+                        {context.length === 0
+                            ? <p className="text-sm text-gray-400 text-center py-8">No context stored yet.</p>
+                            : <ul className="space-y-2">{context.map((c,i)=><li key={i} className="text-sm bg-purple-50 border border-purple-100 rounded-lg px-3 py-2 text-purple-800">{c}</li>)}</ul>
+                        }
+                    </div>
+                    {context.length > 0 && (
+                        <button onClick={()=>{setContext([]);fbSave('context',[]);localStorage.removeItem('ai-context');}} className="mt-4 text-xs text-red-400 hover:text-red-600">
+                            Clear all context
+                        </button>
+                    )}
+                </div>
+            </div>
+        )}
+        </>
+    );
+};
+
+ReactDOM.render(<TaskManager/>, document.getElementById('root'));
+</script>
 </body>
 </html>
