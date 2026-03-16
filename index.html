@@ -10,7 +10,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, doc, setDoc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, getDocs, addDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
         const firebaseConfig = {
             apiKey: "AIzaSyDiy_mVFVhjZddTgM6kYELKc4uB_uygyoc",
             authDomain: "ai-personal-assistant-225fe.firebaseapp.com",
@@ -22,7 +22,7 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         window.firebaseDb = db;
-        window.firebaseModules = { doc, setDoc, getDoc, collection, getDocs };
+        window.firebaseModules = { doc, setDoc, getDoc, collection, getDocs, addDoc, deleteDoc };
         window.firebaseReady = true;
         window.dispatchEvent(new Event('firebaseReady'));
     </script>
@@ -69,21 +69,36 @@ const USER_ID = 'user_1771776063693_f3uvlvfzg';
 async function fbSave(field, value) {
     if (!window.firebaseReady) return;
     try {
-        const { doc, setDoc } = window.firebaseModules;
-        await setDoc(doc(window.firebaseDb, 'users', USER_ID), { [field]: value }, { merge: true });
+        const { doc, setDoc, collection, addDoc, getDocs, deleteDoc } = window.firebaseModules;
+        if (field === 'tasks') {
+            // Tasks are stored as a subcollection
+            // First delete all existing task docs, then re-add
+            const tasksCol = collection(window.firebaseDb, 'users', USER_ID, 'tasks');
+            const existing = await getDocs(tasksCol);
+            const deletes = existing.docs.map(d => deleteDoc(d.ref));
+            await Promise.all(deletes);
+            const adds = value.map(task => addDoc(tasksCol, task));
+            await Promise.all(adds);
+        } else {
+            await setDoc(doc(window.firebaseDb, 'users', USER_ID), { [field]: value }, { merge: true });
+        }
     } catch(e) { console.warn('FB save error:', e); }
 }
 async function fbLoadAll() {
     if (!window.firebaseReady) return null;
     try {
-        const { doc, getDoc } = window.firebaseModules;
+        const { doc, getDoc, collection, getDocs } = window.firebaseModules;
+        // Load main document (messages, context, settings)
         const snap = await getDoc(doc(window.firebaseDb, 'users', USER_ID));
-        if (snap.exists()) {
-            console.log('Loaded data from Firebase for:', USER_ID);
-            return snap.data();
-        } else {
-            console.log('No data found for USER_ID:', USER_ID);
+        const data = snap.exists() ? snap.data() : {};
+        console.log('Loaded main doc for:', USER_ID, 'fields:', Object.keys(data));
+        // Load tasks from subcollection
+        const tasksSnap = await getDocs(collection(window.firebaseDb, 'users', USER_ID, 'tasks'));
+        if (!tasksSnap.empty) {
+            data.tasks = tasksSnap.docs.map(d => ({ ...d.data() }));
+            console.log('Loaded', data.tasks.length, 'tasks from subcollection');
         }
+        return data;
     } catch(e) { console.warn('FB load error:', e); }
     return null;
 }
